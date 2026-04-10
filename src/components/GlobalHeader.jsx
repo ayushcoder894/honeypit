@@ -3,7 +3,7 @@ function GlobalHeader({ criticalCount, query, setQuery, onAlertClick }) {
     <header className="rounded-xl border border-slate-800 bg-panel/90 px-5 py-4 backdrop-blur-sm">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <p className="text-xs uppercase tracking-[0.28em] text-slateText">HoneyGrid AI Command</p>
+          <p className="text-xs uppercase tracking-[0.28em] text-slateText">honeypit AI Command</p>
           <h1 className="text-2xl font-bold text-cyan-100">Threat Console</h1>
         </div>
 
