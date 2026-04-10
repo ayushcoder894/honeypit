@@ -1,0 +1,6 @@
+Frontend: React
+Backend: Flask/Springboot
+
+Theme: Honeypot System
+
+Additional Bonuses (Optional): Deployment, UI/UX Creativity, Data monitoring & Security, AI Implementation, Documentation, Production Level Practices, Innovative Mechanism / Original Idea
