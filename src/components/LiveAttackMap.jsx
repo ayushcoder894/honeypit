@@ -18,7 +18,7 @@ function LiveAttackMap({ attackers, liveAttackActive }) {
     const tick = window.setInterval(() => {
       // Force selection of the live hacker if active for the demo
       const next = liveAttackActive 
-        ? attackers.find(a => a.id === "LIVE_SSH_01") 
+        ? attackers.find(a => a.id.startsWith("LIVE_")) 
         : attackers[Math.floor(Math.random() * attackers.length)];
       
       if (next) {
@@ -80,12 +80,12 @@ function LiveAttackMap({ attackers, liveAttackActive }) {
                   key={attacker.id}
                   center={[attacker.coordinates.lat, attacker.coordinates.lng]}
                   pathOptions={{
-                    color: attacker.id === "LIVE_SSH_01" ? "#00ffff" : "#ff3d5f",
-                    fillColor: attacker.id === "LIVE_SSH_01" ? "#00ffff" : "#ff3d5f",
+                    color: attacker.id.startsWith("LIVE_") ? "#00ffff" : "#ff3d5f",
+                    fillColor: attacker.id.startsWith("LIVE_") ? "#00ffff" : "#ff3d5f",
                     fillOpacity,
                     weight: isActive ? 2 : 1,
                   }}
-                  radius={attacker.id === "LIVE_SSH_01" && isActive ? 20 : radius}
+                  radius={attacker.id.startsWith("LIVE_") && isActive ? 20 : radius}
                 >
                   <Popup>
                     <div className="font-mono text-xs">

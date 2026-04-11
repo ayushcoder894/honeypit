@@ -35,12 +35,11 @@ function App() {
         .then((data) => {
           if (!active) return;
           if (data.logs && data.logs.length > 0) {
-            // Find if there is an active connection that hasn't been terminated
-            const hasConnection = data.logs.some((l) => l.type === "connection");
-            const hasTermination = data.logs.some((l) => l.type === "connection" && l.message.includes("terminated"));
-            const currentlyActive = hasConnection && !hasTermination;
+            // Find the most recent connection event
+            const connections = data.logs.filter((l) => l.type === "connection");
+            const connectLog = connections[connections.length - 1];
+            const currentlyActive = connectLog ? !connectLog.message.includes("terminated") : false;
             
-            const connectLog = data.logs.find((l) => l.type === "connection");
             if (connectLog) {
               if (connectLog.message.includes("Node-WEB-02")) {
                 setCompromisedNode("Node-WEB-02");
@@ -113,19 +112,20 @@ function App() {
 
   const liveMapAttackers = useMemo(() => {
     if (liveAttackActive) {
+      const isWeb = compromisedNode === "Node-WEB-02";
       return [{
-        id: "LIVE_SSH_01",
+        id: isWeb ? "LIVE_WEB_02" : "LIVE_SSH_01",
         alias: "UNKNOWN_HUMAN_HACKER",
         classification: "Human Hacker",
-        weapon: "SSH Reverse Shell",
+        weapon: isWeb ? "SQL Injection Payload" : "SSH Reverse Shell",
         sourceIp: "127.0.0.1",
-        targetNode: "Node-AI-04",
+        targetNode: isWeb ? "Node-WEB-02" : "Node-AI-04",
         coordinates: { lat: 38.9072, lng: -77.0369 }, // Example Lat Lng
         threatScore: 99
       }, ...visibleAttackers];
     }
     return visibleAttackers;
-  }, [liveAttackActive, visibleAttackers]);
+  }, [liveAttackActive, visibleAttackers, compromisedNode]);
 
   const criticalCount = liveAttackActive ? 1 : attackers.filter((a) => a.classification === "Human Hacker").length;
 
