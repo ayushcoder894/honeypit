@@ -5,7 +5,7 @@ function nowTime() {
   return new Date().toLocaleTimeString([], { hour12: false });
 }
 
-function LiveAttackMap({ attackers }) {
+function LiveAttackMap({ attackers, liveAttackActive }) {
   const [activeAttackId, setActiveAttackId] = useState(attackers[0]?.id ?? null);
   const [pulseOn, setPulseOn] = useState(true);
   const [eventFeed, setEventFeed] = useState([]);
@@ -16,16 +16,22 @@ function LiveAttackMap({ attackers }) {
     }
 
     const tick = window.setInterval(() => {
-      const next = attackers[Math.floor(Math.random() * attackers.length)];
-      setActiveAttackId(next.id);
-      setEventFeed((prev) => {
-        const entry = `${nowTime()} | ${next.alias} -> ${next.targetNode} | ${next.weapon}`;
-        return [entry, ...prev].slice(0, 6);
-      });
+      // Force selection of the live hacker if active for the demo
+      const next = liveAttackActive 
+        ? attackers.find(a => a.id === "LIVE_SSH_01") 
+        : attackers[Math.floor(Math.random() * attackers.length)];
+      
+      if (next) {
+        setActiveAttackId(next.id);
+        setEventFeed((prev) => {
+          const entry = `${nowTime()} | ${next.alias} -> ${next.targetNode} | ${next.weapon}`;
+          return [entry, ...prev].slice(0, 6);
+        });
+      }
     }, 1600);
 
     return () => window.clearInterval(tick);
-  }, [attackers]);
+  }, [attackers, liveAttackActive]);
 
   useEffect(() => {
     const pulseTimer = window.setInterval(() => {
@@ -74,12 +80,12 @@ function LiveAttackMap({ attackers }) {
                   key={attacker.id}
                   center={[attacker.coordinates.lat, attacker.coordinates.lng]}
                   pathOptions={{
-                    color: "#ff3d5f",
-                    fillColor: "#ff3d5f",
+                    color: attacker.id === "LIVE_SSH_01" ? "#00ffff" : "#ff3d5f",
+                    fillColor: attacker.id === "LIVE_SSH_01" ? "#00ffff" : "#ff3d5f",
                     fillOpacity,
                     weight: isActive ? 2 : 1,
                   }}
-                  radius={radius}
+                  radius={attacker.id === "LIVE_SSH_01" && isActive ? 20 : radius}
                 >
                   <Popup>
                     <div className="font-mono text-xs">

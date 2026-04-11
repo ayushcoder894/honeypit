@@ -5,26 +5,6 @@ const MODE_IDLE = "idle";
 const MODE_NODE4 = "node4";
 const MODE_NODE3 = "node3";
 
-const node4Command = "root@target:~# cat /etc/kubernetes/admin.conf";
-const node4Yaml = `apiVersion: v1
-clusters:
-- cluster:
-    certificate-authority-data: LS0tLS1CRUdJTiBGQUtFLUNFUlQtREFUQS0tLS0t
-    server: https://10.220.14.88:6443
-  name: prod-simulated-cluster
-contexts:
-- context:
-    cluster: prod-simulated-cluster
-    user: admin-sim
-    namespace: kube-system
-  name: admin@prod-simulated
-current-context: admin@prod-simulated
-kind: Config
-users:
-- name: admin-sim
-  user:
-    token: eyJhbGciOiJSUzI1NiIsImtpZCI6InNpbXVsYXRlZC10b2tlbiJ9.fake.payload.signature`;
-
 function formatDuration(totalSeconds) {
   const h = String(Math.floor(totalSeconds / 3600)).padStart(2, "0");
   const m = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, "0");
@@ -34,17 +14,23 @@ function formatDuration(totalSeconds) {
 
 function ThreatTelemetryFlow({ node4OpenSignal = 0 }) {
   const [mode, setMode] = useState(MODE_IDLE);
-  const [node4TypedCommand, setNode4TypedCommand] = useState("");
-  const [node4SystemMessage, setNode4SystemMessage] = useState("");
-  const [node4TypedYaml, setNode4TypedYaml] = useState("");
-  const [node4Delivered, setNode4Delivered] = useState(false);
 
   const [node3CommandVisible, setNode3CommandVisible] = useState(false);
   const [node3Progress, setNode3Progress] = useState(0);
   const [node3Speed, setNode3Speed] = useState("120.000 KB/s");
   const [node3WastedTime, setNode3WastedTime] = useState(195);
 
+  const [liveLogs, setLiveLogs] = useState([]);
+  const logsEndRef = useRef(null);
+
   const timersRef = useRef([]);
+
+  // Auto-scroll logs to bottom when new logs arrive
+  useEffect(() => {
+    if (mode === MODE_NODE4 && logsEndRef.current) {
+      logsEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [liveLogs, mode]);
 
   useEffect(() => {
     if (node4OpenSignal > 0) {
@@ -53,51 +39,36 @@ function ThreatTelemetryFlow({ node4OpenSignal = 0 }) {
   }, [node4OpenSignal]);
 
   useEffect(() => {
+    let isCancelled = false;
+
     timersRef.current.forEach((t) => {
       clearTimeout(t);
       clearInterval(t);
     });
     timersRef.current = [];
 
-    setNode4TypedCommand("");
-    setNode4SystemMessage("");
-    setNode4TypedYaml("");
-    setNode4Delivered(false);
     setNode3CommandVisible(false);
     setNode3Progress(0);
     setNode3Speed("120.000 KB/s");
     setNode3WastedTime(195);
 
     if (mode === MODE_NODE4) {
-      const start = window.setTimeout(() => {
-        let idx = 0;
-        const cmdTimer = window.setInterval(() => {
-          idx += 1;
-          setNode4TypedCommand(node4Command.slice(0, idx));
-          if (idx >= node4Command.length) {
-            clearInterval(cmdTimer);
-            const systemPause = window.setTimeout(() => {
-              setNode4SystemMessage("[System] Request intercepted. Constructing prompt...");
-              const yamlPause = window.setTimeout(() => {
-                let y = 0;
-                const yamlTimer = window.setInterval(() => {
-                  y += 2;
-                  setNode4TypedYaml(node4Yaml.slice(0, y));
-                  if (y >= node4Yaml.length) {
-                    clearInterval(yamlTimer);
-                    setNode4Delivered(true);
-                  }
-                }, 14);
-                timersRef.current.push(yamlTimer);
-              }, 700);
-              timersRef.current.push(yamlPause);
-            }, 500);
-            timersRef.current.push(systemPause);
-          }
-        }, 28);
-        timersRef.current.push(cmdTimer);
-      }, 350);
-      timersRef.current.push(start);
+      // Clear logs on backend on fresh start
+      fetch("/api/telemetry/logs", { method: "DELETE" }).catch(() => {});
+      setLiveLogs([]);
+
+      // Start polling backend for live SSH feed
+      const pollTimer = window.setInterval(() => {
+        fetch("/api/telemetry/logs")
+          .then((res) => res.json())
+          .then((data) => {
+            if (!isCancelled && data.logs) {
+              setLiveLogs([...data.logs]);
+            }
+          })
+          .catch(() => {});
+      }, 1000);
+      timersRef.current.push(pollTimer);
     }
 
     if (mode === MODE_NODE3) {
@@ -144,6 +115,7 @@ function ThreatTelemetryFlow({ node4OpenSignal = 0 }) {
     }
 
     return () => {
+      isCancelled = true;
       timersRef.current.forEach((t) => {
         clearTimeout(t);
         clearInterval(t);
@@ -215,36 +187,50 @@ function ThreatTelemetryFlow({ node4OpenSignal = 0 }) {
 
           {mode === MODE_NODE4 && (
             <div className="space-y-3">
-              <div className="rounded-lg border border-slate-700 bg-slate-900/70 p-3">
-                <p className="mb-2 inline-flex items-center gap-2 text-xs uppercase tracking-[0.14em] text-slate-400">
-                  <Terminal className="h-4 w-4" />
-                  Attacker Input
-                </p>
-                <pre className="whitespace-pre-wrap font-mono text-sm text-slate-100">
-                  {node4TypedCommand}
-                  {node4TypedCommand.length < node4Command.length && <span className="animate-pulse">_</span>}
-                </pre>
-              </div>
-
-              <div className="rounded-lg border border-slate-700 bg-slate-900/70 p-3">
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <p className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.14em] text-slate-300">
-                    <Brain className="h-4 w-4" />
-                    Generative Deception Engine
+              <div className="rounded-lg border border-slate-700 bg-slate-900/70 p-3 h-80 overflow-y-auto flex flex-col font-mono text-sm shadow-inner transition-all scrollbar-thin scrollbar-track-slate-800 scrollbar-thumb-slate-600">
+                <div className="sticky top-0 z-10 mb-4 flex items-center justify-between gap-2 border-b border-slate-700 bg-slate-900/90 pb-2 backdrop-blur-sm">
+                  <p className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.14em] text-cyan-400">
+                    <Terminal className="h-4 w-4" />
+                    Live SSH Feed (Port 2222)
                   </p>
-                  {node4Delivered && (
-                    <span className="rounded border border-cyan-400/60 bg-cyan-500/10 px-2 py-1 font-mono text-[11px] text-cyan-100">
-                      Payload Delivered
+                  <div className="flex gap-2">
+                    <span className="animate-pulse rounded border border-cyan-400/60 bg-cyan-500/10 px-2 py-1 font-mono text-[11px] text-cyan-100">
+                      Listening...
                     </span>
-                  )}
+                  </div>
                 </div>
 
-                {node4SystemMessage && <p className="mb-2 font-mono text-xs text-slate-300">{node4SystemMessage}</p>}
+                <div className="flex-1 space-y-4">
+                  {liveLogs.length === 0 && (
+                    <p className="text-slate-500 animate-pulse">Waiting for SSH attack connection on 0.0.0.0:2222...</p>
+                  )}
 
-                <pre className="min-h-40 whitespace-pre-wrap font-mono text-xs leading-relaxed text-cyan-200">
-                  {node4TypedYaml}
-                  {!node4Delivered && node4TypedYaml.length > 0 && <span className="animate-pulse">_</span>}
-                </pre>
+                  {liveLogs.map((log) => (
+                    <div key={log.id} className="animate-in fade-in duration-300">
+                      {log.type === "connection" ? (
+                        <div className="text-amber-400 text-xs">[{log.message}]</div>
+                      ) : (
+                        <>
+                          <div className="text-slate-300">
+                            <span className="text-cyan-500 font-bold mr-2">root@target:~#</span> 
+                            {log.command}
+                          </div>
+                          {log.status === "generating" && (
+                            <div className="text-slate-500 text-xs mt-1 animate-pulse">
+                              [System] Intercepted. AI generating spoofed response...
+                            </div>
+                          )}
+                          {log.status === "done" && log.response && (
+                            <div className="text-cyan-200 mt-2 whitespace-pre-wrap break-all text-xs leading-relaxed opacity-90 p-2 rounded bg-slate-950/50 border border-slate-800">
+                              {log.response}
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  ))}
+                  <div ref={logsEndRef} className="h-1" />
+                </div>
               </div>
             </div>
           )}

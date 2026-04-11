@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { FileJson, LoaderCircle } from "lucide-react";
 
 const mockSessions = [
@@ -25,15 +25,37 @@ const mockSessions = [
   },
 ];
 
-function ThreatIntelligenceExport() {
-  const [selectedIds, setSelectedIds] = useState(() => mockSessions.map((s) => s.id));
+function ThreatIntelligenceExport({ threatReportReady, compromisedNode = "Honeypot-SSH-01" }) {
+  const finalSessions = useMemo(() => {
+    if (threatReportReady) {
+      return [
+        {
+          id: "sess-live-capture",
+          ip: "127.0.0.1",
+          node: compromisedNode,
+          duration: "RECENT",
+          classification: "Human Hacker (Live Capture)",
+        },
+        ...mockSessions,
+      ];
+    }
+    return mockSessions;
+  }, [threatReportReady]);
+
+  const [selectedIds, setSelectedIds] = useState(() => finalSessions.map((s) => s.id));
+  
+  useEffect(() => {
+    // Automatically select all when finalSessions changes (e.g., when the live capture is added)
+    setSelectedIds(finalSessions.map((s) => s.id));
+  }, [finalSessions]);
+
   const [downloadState, setDownloadState] = useState("idle");
   const [toast, setToast] = useState("");
 
-  const isAllSelected = useMemo(() => selectedIds.length === mockSessions.length, [selectedIds.length]);
+  const isAllSelected = useMemo(() => selectedIds.length === finalSessions.length, [selectedIds.length, finalSessions.length]);
 
   const toggleSelectAll = () => {
-    setSelectedIds((prev) => (prev.length === mockSessions.length ? [] : mockSessions.map((s) => s.id)));
+    setSelectedIds((prev) => (prev.length === finalSessions.length ? [] : finalSessions.map((s) => s.id)));
   };
 
   const toggleSession = (id) => {
@@ -71,7 +93,7 @@ function ThreatIntelligenceExport() {
       return;
     }
 
-    const selectedSessions = mockSessions.filter((session) => selectedIds.includes(session.id));
+    const selectedSessions = finalSessions.filter((session) => selectedIds.includes(session.id));
     if (selectedSessions.length === 0) {
       setToast("Select at least one session before export.");
       return;
@@ -121,8 +143,8 @@ function ThreatIntelligenceExport() {
           </thead>
 
           <tbody>
-            {mockSessions.map((session) => {
-              const isHuman = session.classification === "Human Hacker";
+            {finalSessions.map((session) => {
+              const isHuman = session.classification.includes("Human Hacker");
               return (
                 <tr key={session.id} className="border-t border-slate-800 text-sm text-slate-200">
                   <td className="px-3 py-3">

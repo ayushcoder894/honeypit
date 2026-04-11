@@ -23,7 +23,7 @@ API_KEY = os.getenv("FEATHERLESS_API_KEY", "").strip()
 # Initialize async OpenAI client
 client = AsyncOpenAI(base_url=DEFAULT_BASE_URL, api_key=API_KEY) if API_KEY else None
 
-async def query_llm_deception_engine(command: str) -> str:
+async def query_llm_deception_engine(command: str, process=None) -> str:
     """Uses Featherless.ai (Qwen) to generate fake, highly realistic terminal outputs."""
     if not client:
         return "bash: API_KEY missing. Cannot contact Generative Deception Engine."
@@ -42,16 +42,38 @@ async def query_llm_deception_engine(command: str) -> str:
     )
     
     try:
-        response = await client.chat.completions.create(
-            model=DEFAULT_MODEL,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"The attacker typed: {command}"}
-            ],
-            temperature=0.7,
-            max_tokens=600
-        )
-        content = (response.choices[0].message.content or "").strip()
+        if process:
+            response = await client.chat.completions.create(
+                model=DEFAULT_MODEL,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": f"The attacker typed: {command}"}
+                ],
+                temperature=0.7,
+                max_tokens=600,
+                stream=True
+            )
+            
+            content_chunks = []
+            async for chunk in response:
+                if chunk.choices and len(chunk.choices) > 0:
+                    token = chunk.choices[0].delta.content or ""
+                    if token:
+                        content_chunks.append(token)
+                        process.stdout.write(token.replace('\n', '\r\n'))
+            
+            content = "".join(content_chunks).strip()
+        else:
+            response = await client.chat.completions.create(
+                model=DEFAULT_MODEL,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": f"The attacker typed: {command}"}
+                ],
+                temperature=0.7,
+                max_tokens=600
+            )
+            content = (response.choices[0].message.content or "").strip()
         
         # Strip out any markdown fences if the AI mistakenly added them
         if content.startswith("```"):
@@ -171,7 +193,7 @@ async def handle_interactive_shell(process):
             })
             
             # Feed the command to the Featherless AI model
-            response = await query_llm_deception_engine(command)
+            response = await query_llm_deception_engine(command, process=process)
             
             await push_telemetry({
                 "id": cmd_id,
@@ -181,10 +203,14 @@ async def handle_interactive_shell(process):
                 "status": "done"
             })
             
+            # The AI already streamed the text directly to the process stdout line by line
+            # We just need to add a final trailing newline before returning the prompt
             if response:
-                # Responses often end with \n, but in an SSH shell, \n needs \r\n to format correctly
-                process.stdout.write(response.replace('\n', '\r\n') + '\r\n')
-            
+                if not response.endswith('\n'):
+                    process.stdout.write('\r\n')
+            else:
+                process.stdout.write('\r\n')
+                
             process.stdout.write(prompt)
                 
         except asyncssh.BreakReceived:
